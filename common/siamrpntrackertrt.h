@@ -34,6 +34,7 @@ struct Parameter {
     float penalty_k = 0.05;
     float win_influence = 0.000001;
     float lr = 0.38;
+    float confidence_score = 0.90;
 };
 
 template <typename t>
@@ -92,10 +93,11 @@ class SiamRPNTrackerTRT {
 
     void init(const cv::Mat& img, cv::Rect2d& box);
 
-//    void update(const cv::Mat& img, cv::Rect2d& box);
     void update(const cv::Mat& img);
 
     cv::Rect2d bbox;
+
+    float best_score;
 
    private:
     void createAnchors(const int& response_sz);

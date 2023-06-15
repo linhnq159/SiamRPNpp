@@ -147,9 +147,10 @@ int main(int argc, char** argv)
        } else {
             // Caculate search branch
            tracker.update(curFrame);
+           std::cout << "score : " << tracker.best_score << std::endl;
            rectangle(curFrame, tracker.bbox, cv::Scalar(255, 0, 255), 1);
            cv::imshow(video_name,curFrame);
-           cv::waitKey(1);
+           cv::waitKey();
         }
         frameCount++ ;
     }

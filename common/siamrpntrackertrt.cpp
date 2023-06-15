@@ -164,21 +164,28 @@ void SiamRPNTrackerTRT::update(const cv::Mat& img) {
     float offset_w = reg_vec.at(id).w * z_sz_ / cfg_.exemplar_sz;
     float offset_h = reg_vec.at(id).h * z_sz_ / cfg_.exemplar_sz;
 
-    pos_.x += offset_x;
-    pos_.y += offset_y;
+    float lr = response_vec.at(id) * cfg_.lr;
+
+    best_score = response[id];
+
+    if (best_score > cfg_.confidence_score){
+        pos_.x += offset_x;
+        pos_.y += offset_y;
+
+        target_sz_w_ = (1 - lr) * target_sz_w_ + lr * offset_w;
+        target_sz_h_ = (1 - lr) * target_sz_h_ + lr * offset_h;
+
+    }
     pos_.x = std::max(pos_.x, 0.f);
     pos_.y = std::max(pos_.y, 0.f);
     pos_.x = std::min(pos_.x, img.cols - 1.f);
     pos_.y = std::min(pos_.y, img.rows - 1.f);
 
-    float lr = response_vec.at(id) * cfg_.lr;
-    target_sz_w_ = (1 - lr) * target_sz_w_ + lr * offset_w;
-    target_sz_h_ = (1 - lr) * target_sz_h_ + lr * offset_h;
-
     target_sz_w_ = std::max(target_sz_w_, 10.f);
     target_sz_h_ = std::max(target_sz_h_, 10.f);
     target_sz_w_ = std::min(target_sz_w_, img.cols - 1.f);
     target_sz_h_ = std::min(target_sz_h_, img.rows - 1.f);
+
 
     // # update exemplar and instance sizes
     float context = (target_sz_w_ + target_sz_h_) / 2.0;
