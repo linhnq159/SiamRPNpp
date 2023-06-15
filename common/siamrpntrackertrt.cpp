@@ -185,8 +185,8 @@ void SiamRPNTrackerTRT::update(const cv::Mat& img) {
     z_sz_ = std::sqrt((target_sz_w_ + context) * (target_sz_h_ + context));
     x_sz_ = z_sz_ * cfg_.instance_sz / cfg_.exemplar_sz;
 
-    bbox.x = pos_.x + 1 - (target_sz_w_ - 1) / 2;
-    bbox.y =  pos_.y + 1 - (target_sz_h_ - 1) / 2;
+    bbox.x = pos_.x - target_sz_w_ / 2;
+    bbox.y =  pos_.y - target_sz_h_ / 2;
     bbox.width = target_sz_w_;
     bbox.height = target_sz_h_;
 
