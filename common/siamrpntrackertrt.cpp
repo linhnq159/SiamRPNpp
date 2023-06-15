@@ -72,8 +72,8 @@ void SiamRPNTrackerTRT::init(const cv::Mat& img, cv::Rect2d& box) {
 
     cv::Point2f init_pos;
 
-    init_pos.x = box.x + box.width / 2.0;
-    init_pos.y = box.y + box.height / 2.0;
+    init_pos.x = box.x + (box.width - 1) / 2.0;
+    init_pos.y = box.y + (box.height - 1) / 2.0;
 
     target_sz_w_ = static_cast<float>(w);
     target_sz_h_ = static_cast<float>(h);
@@ -81,9 +81,6 @@ void SiamRPNTrackerTRT::init(const cv::Mat& img, cv::Rect2d& box) {
     base_target_sz_w_ = target_sz_w_;
     base_target_sz_h_ = target_sz_h_;
     pos_ = init_pos;
-
-//    int response_sz = (cfg_.instance_sz - cfg_.exemplar_sz) / cfg_.total_stride + 1 + cfg_.base_size;
-//    createAnchors(response_sz);
 
 //    // create hanning window
 //    calculateHann(cv::Size(response_sz, response_sz), hann_window_);
@@ -93,27 +90,26 @@ void SiamRPNTrackerTRT::init(const cv::Mat& img, cv::Rect2d& box) {
     z_sz_ = std::sqrt((target_sz_w_ + context) * (target_sz_h_ + context));
     x_sz_ = z_sz_ * cfg_.instance_sz / cfg_.exemplar_sz;
 
-    cv::Mat exemplar_image_patch;
-    exemplar_image_patch = getSamplePatch(img, init_pos, z_sz_, cfg_.exemplar_sz);
+    // Calculate channel average
+    channel_average = cv::mean(img);
+    for (int i = 0 ; i < 3 ; ++i){
+        channel_average[i] = std::floor(channel_average[i]);
+    }
 
-//    std::cout << "exemplar_image_patch_float" << exemplar_image_patch << std::endl;
-//    cv::Size size = exemplar_image_patch.size();
-//    int rows = size.height;
-//    int cols = size.width;
-//    std::cout << "Rows: " << rows << ", Cols: " << cols << std::endl;
+    cv::Mat exemplar_image_patch;
+    exemplar_image_patch = get_subwindow(img, init_pos, cfg_.exemplar_sz, std::round(z_sz_), channel_average);
 
     temp_->infer(exemplar_image_patch);
 
     hostDataBuffer1 = temp_->output1.ptr<float>(0);
     hostDataBuffer2 = temp_->output2.ptr<float>(0);
     hostDataBuffer3 = temp_->output3.ptr<float>(0);
-
 }
 
 
 void SiamRPNTrackerTRT::update(const cv::Mat& img) {
     cv::Mat instance_patch;
-    instance_patch = getSamplePatch(img, pos_, x_sz_, cfg_.instance_sz);
+    instance_patch = get_subwindow(img, pos_ , cfg_.instance_sz, std::round(x_sz_), channel_average);
     track_->infer(instance_patch, hostDataBuffer1, hostDataBuffer2, hostDataBuffer3);
 
     float* output_cls_ = track_->output_cls.ptr<float>(0);
@@ -143,7 +139,6 @@ void SiamRPNTrackerTRT::update(const cv::Mat& img) {
     std::vector<float> response_penalty;
     for (size_t i = 0; i < penalty.size(); ++i) {
         response_penalty.emplace_back(response[i] * penalty[i]);
-        // cout << "response_penalty: " << response_penalty.device() << endl;
     }
 
     // TODO:: response transfer to vector
@@ -157,7 +152,6 @@ void SiamRPNTrackerTRT::update(const cv::Mat& img) {
                         response_penalty[n * hann_window_.cols * hann_window_.rows + r * hann_window_.cols + c] +
                     cfg_.win_influence * phann[c];
                 response_vec.push_back(temp);
-                // cout << "response_vec: " << response_vec.device() << endl;
             }
         }
     }
@@ -196,11 +190,6 @@ void SiamRPNTrackerTRT::update(const cv::Mat& img) {
     bbox.width = target_sz_w_;
     bbox.height = target_sz_h_;
 
-    // box.x = 20 ;  //pos_.x + 1 - (target_sz_w_ - 1) / 2;
-    // box.y = 20 ;// pos_.y + 1 - (target_sz_h_ - 1) / 2;
-    // box.width = 10;// target_sz_w_;
-    // box.height = 10; //target_sz_h_;
-
 }
 
 std::vector<float> SiamRPNTrackerTRT::createPenalty(const float& target_w, const float& target_h,
@@ -225,69 +214,57 @@ std::vector<float> SiamRPNTrackerTRT::createPenalty(const float& target_w, const
     return result;
 }
 
-cv::Mat subwindowtrt(const cv::Mat& in, const cv::Rect& window, int borderType) {
-    cv::Rect cutWindow = window;
-    limit(cutWindow, in.cols, in.rows);
+cv::Mat SiamRPNTrackerTRT::get_subwindow(cv::Mat im, cv::Point2f pos, int model_sz, int original_sz, cv::Scalar avg_chans){
+    int sz = original_sz;
+    cv::Size im_sz = im.size();
+    float center = (original_sz + 1) / 2.0;
+    float context_xmin = std::floor(pos.x - center + 0.5);
+    float context_xmax = context_xmin + sz - 1;
+    float context_ymin = std::floor(pos.y - center + 0.5);
+    float context_ymax = context_ymin + sz - 1;
+    int left_pad = std::max(0, static_cast<int>(-context_xmin));
+    int top_pad = std::max(0, static_cast<int>(-context_ymin));
+    int right_pad = std::max(0, static_cast<int>(context_xmax - im_sz.width + 1));
+    int bottom_pad = std::max(0, static_cast<int>(context_ymax - im_sz.height + 1));
 
-    if (cutWindow.height <= 0 || cutWindow.width <= 0) assert(0);
+    context_xmin = context_xmin + left_pad;
+    context_xmax = context_xmax + left_pad;
+    context_ymin = context_ymin + top_pad;
+    context_ymax = context_ymax + top_pad;
 
-    cv::Rect border = getBorder(window, cutWindow);
-    cv::Mat res = in(cutWindow);
+    int r = im.rows;
+    int c = im.cols;
+    int k = im.channels();
+    cv::Mat im_patch;
 
-    if (border != cv::Rect(0, 0, 0, 0)) {
-        cv::copyMakeBorder(res, res, border.y, border.height, border.x, border.width, borderType);
-    }
-    return res;
-}
+    if (top_pad || bottom_pad || left_pad || right_pad) {
 
-cv::Mat SiamRPNTrackerTRT::getSamplePatch(const cv::Mat im, const cv::Point2f posf, const int& in_sz, const int& out_sz) {
-    // Pos should be integer when input, but floor in just in case.
-    cv::Point2i pos(posf.x, posf.y);
-    cv::Size sample_sz = {in_sz, in_sz};  // scale adaptation
-    cv::Size model_sz = {out_sz, out_sz};
-
-    // Downsample factor
-    float resize_factor = std::min(sample_sz.width / out_sz, sample_sz.height / out_sz);
-    int df = std::max((float)std::floor(resize_factor - 0.1), float(1));
-
-    cv::Mat new_im;
-    im.copyTo(new_im);
-    if (df > 1) {
-        // compute offset and new center position
-        cv::Point os((pos.x - 1) % df, ((pos.y - 1) % df));
-        pos.x = (pos.x - os.x - 1) / df + 1;
-        pos.y = (pos.y - os.y - 1) / df + 1;
-        // new sample size
-        sample_sz.width = sample_sz.width / df;
-        sample_sz.height = sample_sz.height / df;
-        // down sample image
-        int r = (im.rows - os.y) / df + 1;
-        int c = (im.cols - os.x) / df;
-        cv::Mat new_im2(r, c, im.type());
-        new_im = new_im2;
-        for (size_t i = 0 + os.y, m = 0; i < (size_t)im.rows && m < (size_t)new_im.rows; i += df, ++m) {
-            for (size_t j = 0 + os.x, n = 0; j < (size_t)im.cols && n < (size_t)new_im.cols; j += df, ++n) {
-                if (im.channels() == 1) {
-                    new_im.at<uchar>(m, n) = im.at<uchar>(i, j);
-                } else {
-                    new_im.at<cv::Vec3b>(m, n) = im.at<cv::Vec3b>(i, j);
-                }
-            }
+        cv::Size size(c + left_pad + right_pad, r + top_pad + bottom_pad);
+        cv::Mat te_im(size, CV_8UC(k), cv::Scalar(0, 0, 0));
+        im.copyTo(te_im(cv::Rect(left_pad, top_pad, c, r)));
+        if (top_pad) {
+            te_im(cv::Rect(left_pad, 0, c, top_pad)) = avg_chans;
         }
+        if (bottom_pad) {
+            te_im(cv::Rect(left_pad, r + top_pad, c, te_im.rows - (r + top_pad))) = avg_chans;
+        }
+        if (left_pad) {
+            te_im(cv::Rect(0, 0, left_pad, te_im.rows)) = avg_chans;
+        }
+        if (right_pad) {
+            te_im(cv::Rect(c + left_pad, 0, te_im.cols - (c + left_pad), te_im.rows)) = avg_chans;
+        }
+
+        cv::Rect roi_rect(context_xmin, context_ymin, context_xmax - context_xmin + 1, context_ymax - context_ymin + 1);
+        im_patch = te_im(roi_rect);
+    }
+    else {
+        im_patch = im(cv::Rect(context_xmin, context_ymin, context_xmax - context_xmin + 1, context_ymax - context_ymin + 1));
     }
 
-    // make sure the size is not too small and round it
-    sample_sz.width = std::max(std::round(sample_sz.width), 2.0);
-    sample_sz.height = std::max(std::round(sample_sz.height), 2.0);
-
-    cv::Point pos2(pos.x - std::floor((sample_sz.width + 1) / 2), pos.y - std::floor((sample_sz.height + 1) / 2));
-    cv::Mat im_patch = subwindowtrt(new_im, cv::Rect(pos2, sample_sz), cv::BORDER_REPLICATE);
-
-    cv::Mat resized_patch;
-    if (im_patch.cols == 0 || im_patch.rows == 0) {
-        return resized_patch;
+    if (model_sz != original_sz) {
+        cv::resize(im_patch, im_patch, cv::Size(model_sz, model_sz));
     }
-    cv::resize(im_patch, resized_patch, model_sz);
 
-    return resized_patch;
+    return im_patch;
 }

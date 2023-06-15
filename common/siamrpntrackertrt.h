@@ -86,8 +86,6 @@ cv::Rect getBorder(const cv::Rect_<t>& original, cv::Rect_<t>& limited) {
     return res;
 }
 
-cv::Mat subwindowtrt(const cv::Mat& in, const cv::Rect& window, int borderType = cv::BORDER_CONSTANT);
-
 class SiamRPNTrackerTRT {
    public:
     SiamRPNTrackerTRT(TRTTemplate *temp, TRTTrack *track);
@@ -106,13 +104,14 @@ class SiamRPNTrackerTRT {
 
     void calculateHann(const cv::Size& sz, cv::Mat& output);
 
-    cv::Mat getSamplePatch(const cv::Mat im, const cv::Point2f posf, const int& in_sz, const int& out_sz);
+    cv::Mat get_subwindow(cv::Mat im, cv::Point2f pos, int out_sz, int in_sz, cv::Scalar avg_chans);
 
     float z_sz_;
     float x_sz_;
     std::vector<Anchor> anchors_;
     Parameter cfg_;
     cv::Mat hann_window_;
+    cv::Scalar channel_average;
 
     cv::Point2f pos_;
     float target_sz_w_;

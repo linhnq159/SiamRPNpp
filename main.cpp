@@ -67,17 +67,17 @@ samplesCommon::TrtParams initializeSampleParams(const samplesCommon::Args& args)
 {
     samplesCommon::TrtParams params;
     // Path to File Tensorrt
-    params.TrtFileTemplate = "..//model/model_template_fp16.trt";
-    params.TrtFileTrack = "../model/model_search_fp16.trt";
+    params.TrtFileTemplate = "/home/oem/Tracking/Cpp/SiamRPN_TRT_full/model_onnx/model_template_r50_fp16.trt";
+    params.TrtFileTrack = "/home/oem/Tracking/Cpp/SiamRPN_TRT_full/model_onnx/model_search_r50_fp16.trt";
 
     // Name Input Output Template
     // Check model ONNX
     params.inputTensorNamesTemplate = {"input.1"};
-    params.outputTensorNamesTemplate = {"681","693","705"};
+    params.outputTensorNamesTemplate = {"642","654","666"};
 
     // Name Input Output Track
-    params.inputTensorNamesTrack = {"input.1","input.287","input.323","input.359"};
-    params.outputTensorNamesTrack = {"841","845"};
+    params.inputTensorNamesTrack = {"input.1","input.311","input.347","input.383"};
+    params.outputTensorNamesTrack = {"883","896"};
 
     return params;
 }
