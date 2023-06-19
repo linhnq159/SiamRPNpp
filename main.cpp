@@ -122,8 +122,13 @@ int main(int argc, char** argv)
 //     Create Tracker
     SiamRPNTrackerTRT tracker(&temp, &track);
 
-//    std::string file_input_video = "path_to_video";
-    std::string file_input_video = "/media/oem/linhnq/Data_Drone_Linh_video/39.mp4";
+    std::string file_input_video ;
+    if (argc > 1){
+        file_input_video = argv[1];
+    }
+    else{
+        file_input_video = "/media/oem/linhnq/Data_Drone_Linh_video/39.mp4";
+    }
     std::string video_name = "siamRPNTracker" ;
 
     cv::VideoCapture cap (file_input_video);
